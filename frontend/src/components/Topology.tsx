@@ -1,7 +1,7 @@
 import CytoscapeComponent from 'react-cytoscapejs'
 import cytoscape, { type Core, type ElementDefinition, type EventObject } from 'cytoscape'
 import coseBilkent from 'cytoscape-cose-bilkent'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { Device } from '../lib/types'
 
@@ -25,9 +25,9 @@ export function Topology({
   const cyRef = useRef<cytoscape.Core | null>(null)
   const lastIdsRef = useRef<string>('') // used to avoid visible graph refresh
 
-  const elements = useMemo(() => {
-    const guardian = devices.find((d) => d.id === 'guardian')
-    const peripheral = devices.filter((d) => d.id !== 'guardian')
+  const buildElements = (current: Device[]) => {
+    const guardian = current.find((d) => d.id === 'guardian')
+    const peripheral = current.filter((d) => d.id !== 'guardian')
 
     const nodes: ElementDefinition[] = [
       {
@@ -55,15 +55,27 @@ export function Topology({
     }))
 
     return [...nodes, ...edges]
-  }, [devices])
+  }
+
+  // Critical: keep Cytoscape `elements` stable between refresh ticks to avoid visible redraw.
+  const [elements, setElements] = useState<ElementDefinition[]>(() => buildElements(devices))
+
+  const idSignature = useMemo(() => devices.map((d) => d.id).sort().join('|'), [devices])
+
+  useEffect(() => {
+    if (idSignature === lastIdsRef.current) return
+    lastIdsRef.current = idSignature
+    setElements(buildElements(devices))
+  }, [devices, idSignature])
+
+  // (elements are managed via buildElements + state above)
 
   useEffect(() => {
     const cy = cyRef.current
     if (!cy) return
     // Only re-layout when the set of nodes changes (add/remove), not on every refresh tick.
-    const ids = devices.map((d) => d.id).sort().join('|')
-    if (ids === lastIdsRef.current) return
-    lastIdsRef.current = ids
+    const ids = idSignature
+    if (!ids) return
 
     const layout = cy.layout({
       name: 'cose-bilkent',
@@ -75,7 +87,7 @@ export function Topology({
       gravity: 0.35,
     } as any)
     layout.run()
-  }, [devices])
+  }, [idSignature])
 
   useEffect(() => {
     const cy = cyRef.current
