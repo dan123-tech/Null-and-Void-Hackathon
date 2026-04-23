@@ -49,3 +49,14 @@ export type Packet = {
   bytes: number
 }
 
+export type Vulnerability = {
+  id: string
+  detected_at: string
+  device_id: string
+  cve: string
+  severity: 'low' | 'medium' | 'high' | 'critical'
+  title: string
+  description: string
+  remediation: string
+}
+

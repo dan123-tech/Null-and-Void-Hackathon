@@ -71,3 +71,14 @@ class Packet(BaseModel):
     flags: str | None = None
     bytes: int
 
+
+class Vulnerability(BaseModel):
+    id: str
+    detected_at: datetime
+    device_id: str
+    cve: str
+    severity: Literal["low", "medium", "high", "critical"]
+    title: str
+    description: str
+    remediation: str
+

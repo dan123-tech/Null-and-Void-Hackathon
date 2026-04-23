@@ -57,3 +57,16 @@ class PacketRow(Base):
     flags: Mapped[str | None] = mapped_column(String(32), nullable=True)  # e.g. SYN
     bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+
+class VulnerabilityRow(Base):
+    __tablename__ = "vulnerabilities"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+    device_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    cve: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), index=True, nullable=False)  # low/medium/high/critical
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    remediation: Mapped[str] = mapped_column(Text, nullable=False)
+

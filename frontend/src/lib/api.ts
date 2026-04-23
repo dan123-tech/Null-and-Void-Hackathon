@@ -1,4 +1,4 @@
-import type { Alert, Device, Packet, RiskScore, Snapshot } from './types'
+import type { Alert, Device, Packet, RiskScore, Snapshot, Vulnerability } from './types'
 import { getToken } from './auth'
 
 function authHeaders() {
@@ -40,6 +40,21 @@ export async function fetchDevicePackets(deviceId: string, limit = 50): Promise<
   })
   if (!r.ok) throw new Error(`packets: ${r.status}`)
   return (await r.json()) as Packet[]
+}
+
+export async function fetchDeviceVulnerabilities(deviceId: string): Promise<Vulnerability[]> {
+  const r = await fetch(`/api/devices/${encodeURIComponent(deviceId)}/vulnerabilities`, { headers: authHeaders() })
+  if (!r.ok) throw new Error(`vulns: ${r.status}`)
+  return (await r.json()) as Vulnerability[]
+}
+
+export async function scanDeviceVulnerabilities(deviceId: string): Promise<Vulnerability[]> {
+  const r = await fetch(`/api/devices/${encodeURIComponent(deviceId)}/scan-vulnerabilities`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  if (!r.ok) throw new Error(`scan-vulns: ${r.status}`)
+  return (await r.json()) as Vulnerability[]
 }
 
 export function connectSnapshotWS(onSnapshot: (s: Snapshot) => void, onError?: (e: Event) => void) {

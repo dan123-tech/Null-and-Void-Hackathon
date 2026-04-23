@@ -15,8 +15,21 @@ from sqlalchemy.orm import Session
 
 from .auth import authenticate_user, create_access_token, current_user, get_db, jwt_secret, token_from_ws_query
 from .db import Base, ENGINE, session_scope
-from .models import Alert, Device, KillSwitchRequest, KillSwitchResponse, Packet, RiskScore, TokenResponse, UserMe
-from .orm import AlertRow, DeviceRow, PacketRow, UserRow
+import uuid
+from datetime import datetime, timezone
+
+from .models import (
+    Alert,
+    Device,
+    KillSwitchRequest,
+    KillSwitchResponse,
+    Packet,
+    RiskScore,
+    TokenResponse,
+    UserMe,
+    Vulnerability,
+)
+from .orm import AlertRow, DeviceRow, PacketRow, UserRow, VulnerabilityRow
 from .store import STORE, sync_to_db
 
 
@@ -163,6 +176,128 @@ def get_device_packets(
         )
         for r in rows
     ]
+
+
+@app.get("/api/devices/{device_id}/vulnerabilities", response_model=List[Vulnerability])
+def get_device_vulns(
+    device_id: str,
+    _: UserRow = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> List[Vulnerability]:
+    rows = db.scalars(
+        select(VulnerabilityRow).where(VulnerabilityRow.device_id == device_id).order_by(VulnerabilityRow.detected_at.desc())
+    ).all()
+    return [
+        Vulnerability(
+            id=r.id,
+            detected_at=r.detected_at,
+            device_id=r.device_id,
+            cve=r.cve,
+            severity=r.severity,  # type: ignore[arg-type]
+            title=r.title,
+            description=r.description,
+            remediation=r.remediation,
+        )
+        for r in rows
+    ]
+
+
+@app.post("/api/devices/{device_id}/scan-vulnerabilities", response_model=List[Vulnerability])
+def scan_device_vulns(
+    device_id: str,
+    _: UserRow = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> List[Vulnerability]:
+    dev = db.get(DeviceRow, device_id)
+    if not dev:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    # Demo scanner: derive findings from device type/vendor + recent packet ports
+    ports = set()
+    recent = db.scalars(select(PacketRow).where(PacketRow.device_id == device_id).order_by(PacketRow.ts.desc()).limit(200)).all()
+    for p in recent:
+        if p.dst_port:
+            ports.add(int(p.dst_port))
+        if p.src_port:
+            ports.add(int(p.src_port))
+
+    findings: list[tuple[str, str, str, str, str]] = []  # (cve, sev, title, desc, fix)
+    v = (dev.vendor or "").lower()
+    t = (dev.device_type or "unknown").lower()
+
+    if 22 in ports:
+        findings.append(
+            (
+                "CVE-2018-15473",
+                "medium",
+                "OpenSSH User Enumeration",
+                "SSH service may allow username enumeration if misconfigured/outdated.",
+                "Update OpenSSH and disable verbose auth errors; restrict SSH to trusted IPs.",
+            )
+        )
+    if 80 in ports:
+        findings.append(
+            (
+                "CVE-2021-41773",
+                "high",
+                "Apache Path Traversal",
+                "HTTP service may be vulnerable to path traversal when running certain Apache versions.",
+                "Patch Apache to a fixed version; place behind reverse proxy/WAF.",
+            )
+        )
+    if 1883 in ports:
+        findings.append(
+            (
+                "CVE-2020-13849",
+                "high",
+                "MQTT Broker Exposure",
+                "MQTT on 1883 is often unauthenticated; can leak telemetry or allow publish/subscribe abuse.",
+                "Enable authentication/TLS; restrict broker to LAN/VPN; rotate credentials.",
+            )
+        )
+
+    if "tuya" in v or t == "iot":
+        findings.append(
+            (
+                "CVE-2023-45866",
+                "high",
+                "IoT BLE/Pairing Weakness (class)",
+                "Many IoT devices ship with weak pairing/default credentials or insecure BLE pairing flows.",
+                "Change defaults; update firmware; isolate IoT VLAN; disable UPnP.",
+            )
+        )
+    if "apple" in v and t == "phone":
+        findings.append(
+            (
+                "CVE-2023-41064",
+                "critical",
+                "Potential mobile RCE chain (class)",
+                "Mobile devices require prompt security updates; older OS versions are high-risk targets.",
+                "Update iOS to latest; enforce MDM policies if available.",
+            )
+        )
+
+    # Upsert: clear old scan results then insert new ones
+    db.execute(text("DELETE FROM vulnerabilities WHERE device_id = :d"), {"d": device_id})
+    now = datetime.now(timezone.utc)
+    for cve, sev, title, desc, fix in findings:
+        db.add(
+            VulnerabilityRow(
+                id=str(uuid.uuid4()),
+                detected_at=now,
+                device_id=device_id,
+                cve=cve,
+                severity=sev,
+                title=title,
+                description=desc,
+                remediation=fix,
+            )
+        )
+
+    dev.vulnerability_status = "vulnerable" if findings else "patched"
+
+    db.flush()
+    return get_device_vulns(device_id=device_id, db=db, _=_)  # type: ignore[arg-type]
 
 
 def snapshot_payload() -> Dict[str, Any]:
