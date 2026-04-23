@@ -1,0 +1,15 @@
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.DS_Store
+**/dist
+**/build
+**/node_modules
+**/*.log
+.git
+.gitignore
+terminals
+agent-transcripts
+

@@ -1,0 +1,31 @@
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Node / React
+node_modules/
+dist/
+build/
+.vite/
+
+# Logs
+*.log
+
+# IDE / Cursor
+.cursor/
+terminals/
+agent-transcripts/
+
+# OS
+Thumbs.db
+
+# Local cloned repos (do not vendor)
+code-the-future-2026/
+
