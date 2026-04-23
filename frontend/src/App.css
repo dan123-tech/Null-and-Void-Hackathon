@@ -124,6 +124,38 @@
   min-height: 360px;
 }
 
+.tableWrap {
+  max-height: 300px;
+  overflow: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(64, 102, 160, 0.14);
+  font-size: 13px;
+}
+
+.table th {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.row {
+  cursor: pointer;
+}
+.row:hover {
+  background: rgba(31, 224, 215, 0.05);
+}
+
 .gauge {
   padding-bottom: 10px;
 }

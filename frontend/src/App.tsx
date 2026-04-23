@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { AlertLog } from './components/AlertLog'
 import { DeviceSidebar } from './components/DeviceSidebar'
+import { DeviceTable } from './components/DeviceTable'
 import { RiskGauge } from './components/RiskGauge'
 import { Topology } from './components/Topology'
 import { connectSnapshotWS, fetchAlerts, fetchDevices, fetchRisk, killSwitch } from './lib/api'
@@ -127,6 +128,7 @@ function App() {
 
         <section className="center">
           <Topology devices={devices} selectedId={selectedId} onSelect={setSelectedId} />
+          <DeviceTable devices={devices} onSelect={(id) => setSelectedId(id)} />
         </section>
 
         <section className="rightRail">
