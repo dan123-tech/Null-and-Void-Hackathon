@@ -7,4 +7,5 @@ psycopg[binary]
 passlib[bcrypt]
 python-jose[cryptography]
 python-multipart
+bcrypt<4
 
