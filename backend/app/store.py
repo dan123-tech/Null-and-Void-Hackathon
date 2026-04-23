@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from .models import Alert, Device, DeviceState, RiskScore
 from .orm import AlertRow, DeviceRow, PacketRow
+from .discovery import discover_all
 
 
 class InMemoryTwinStore:
@@ -154,6 +155,8 @@ def sync_to_db(db: Session) -> None:
                 ip=d.ip,
                 mac=d.mac,
                 hostname=d.hostname,
+                vendor=getattr(d, "vendor", None),
+                device_type=getattr(d, "device_type", None),
                 state=d.state.value if isinstance(d.state, DeviceState) else str(d.state),
                 vulnerability_status=d.vulnerability_status,
                 last_seen=now,
@@ -163,8 +166,44 @@ def sync_to_db(db: Session) -> None:
             row.ip = d.ip
             row.mac = d.mac
             row.hostname = d.hostname
+            row.vendor = getattr(d, "vendor", None)
+            row.device_type = getattr(d, "device_type", None)
             row.state = d.state.value if isinstance(d.state, DeviceState) else str(d.state)
             row.vulnerability_status = d.vulnerability_status
+            row.last_seen = now
+
+    # Merge discovered LAN devices (best-effort)
+    try:
+        discovered = discover_all()
+    except Exception:
+        discovered = []
+
+    for h in discovered:
+        dev_id = f"lan-{h.ip}"
+        if dev_id == STORE.guardian_id:
+            continue
+        row = db.get(DeviceRow, dev_id)
+        if not row:
+            db.add(
+                DeviceRow(
+                    id=dev_id,
+                    ip=h.ip,
+                    mac=h.mac or "unknown",
+                    hostname=h.hostname,
+                    vendor=h.vendor,
+                    device_type=h.device_type,
+                    state="unknown",
+                    vulnerability_status="unknown",
+                    last_seen=now,
+                )
+            )
+        else:
+            row.ip = h.ip
+            if h.mac:
+                row.mac = h.mac
+            row.hostname = h.hostname or row.hostname
+            row.vendor = h.vendor or row.vendor
+            row.device_type = h.device_type or row.device_type
             row.last_seen = now
 
     # Append new alerts since last sync (bounded)

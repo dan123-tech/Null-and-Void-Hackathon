@@ -18,6 +18,8 @@ class Device(BaseModel):
     ip: str
     mac: str
     hostname: Optional[str] = None
+    vendor: Optional[str] = None
+    device_type: Optional[str] = None
     state: DeviceState = DeviceState.unknown
     vulnerability_status: Literal["unknown", "patched", "vulnerable"] = "unknown"
     last_seen: datetime = Field(default_factory=datetime.utcnow)

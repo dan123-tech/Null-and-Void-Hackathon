@@ -18,6 +18,9 @@ services:
     restart: unless-stopped
     depends_on:
       - postgres
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
 
   # Optional: local InfluxDB for your Pi (enable when you integrate it)
   influxdb:

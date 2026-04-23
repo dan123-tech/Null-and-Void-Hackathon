@@ -25,6 +25,8 @@ class DeviceRow(Base):
     ip: Mapped[str] = mapped_column(String(64), index=True)
     mac: Mapped[str] = mapped_column(String(64))
     hostname: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    vendor: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    device_type: Mapped[str | None] = mapped_column(String(64), nullable=True)  # phone/laptop/iot/router/unknown
     state: Mapped[str] = mapped_column(String(16), index=True)
     vulnerability_status: Mapped[str] = mapped_column(String(16), index=True)
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

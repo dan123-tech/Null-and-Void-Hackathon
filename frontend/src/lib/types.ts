@@ -7,6 +7,8 @@ export type Device = {
   ip: string
   mac: string
   hostname?: string | null
+  vendor?: string | null
+  device_type?: string | null
   state: DeviceState
   vulnerability_status: VulnerabilityStatus
   last_seen: string

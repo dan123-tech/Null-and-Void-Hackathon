@@ -83,6 +83,8 @@ def get_devices(_: UserRow = Depends(current_user), db: Session = Depends(get_db
             ip=r.ip,
             mac=r.mac,
             hostname=r.hostname,
+            vendor=r.vendor,
+            device_type=r.device_type,
             state=r.state,  # pydantic will coerce to enum
             vulnerability_status=r.vulnerability_status,  # type: ignore[arg-type]
             last_seen=r.last_seen,

@@ -20,6 +20,8 @@ export function DeviceTable({
               <th>State</th>
               <th>IP</th>
               <th>MAC</th>
+              <th>Type</th>
+              <th>Vendor</th>
               <th>Vuln</th>
             </tr>
           </thead>
@@ -31,6 +33,8 @@ export function DeviceTable({
                 </td>
                 <td className="mono">{d.ip}</td>
                 <td className="mono">{d.mac}</td>
+                <td className="mono">{(d.device_type || 'unknown').toUpperCase()}</td>
+                <td>{d.vendor || '—'}</td>
                 <td>
                   <span className={`pill pill-vuln-${d.vulnerability_status}`}>
                     {d.vulnerability_status.toUpperCase()}
@@ -40,7 +44,7 @@ export function DeviceTable({
             ))}
             {devices.length === 0 ? (
               <tr>
-                <td colSpan={4} className="muted" style={{ padding: 12 }}>
+                <td colSpan={6} className="muted" style={{ padding: 12 }}>
                   No devices yet.
                 </td>
               </tr>
