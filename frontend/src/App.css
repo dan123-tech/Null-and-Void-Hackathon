@@ -4,6 +4,80 @@
   flex-direction: column;
 }
 
+.shell {
+  min-height: 100svh;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+}
+
+@media (max-width: 1100px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sideNav {
+  border-right: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(9, 12, 24, 0.88), rgba(9, 12, 24, 0.55));
+  backdrop-filter: blur(10px);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sideNavTop {
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(64, 102, 160, 0.18);
+}
+
+.sideNavList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+}
+
+.sideNavItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px;
+  border-radius: 12px;
+  text-decoration: none;
+  color: rgba(213, 233, 255, 0.82);
+  border: 1px solid rgba(64, 102, 160, 0.16);
+  background: rgba(9, 12, 24, 0.25);
+}
+
+.sideNavItem:hover {
+  border-color: rgba(31, 224, 215, 0.25);
+  background: rgba(31, 224, 215, 0.04);
+}
+
+.sideNavItem.active {
+  border-color: rgba(31, 224, 215, 0.42);
+  background: rgba(31, 224, 215, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(31, 224, 215, 0.08);
+}
+
+.sideNavDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(64, 102, 160, 0.6);
+}
+.sideNavItem.active .sideNavDot {
+  background: var(--cyan);
+  box-shadow: 0 0 14px rgba(31, 224, 215, 0.35);
+}
+
+.sideNavFoot {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid rgba(64, 102, 160, 0.18);
+}
+
 .topbar {
   display: flex;
   align-items: center;
