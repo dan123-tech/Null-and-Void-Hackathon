@@ -34,3 +34,16 @@ export type Snapshot = {
   blocked_ips: Record<string, string>
 }
 
+export type Packet = {
+  id: string
+  ts: string
+  device_id: string
+  src_ip: string
+  dst_ip: string
+  proto: string
+  src_port?: number | null
+  dst_port?: number | null
+  flags?: string | null
+  bytes: number
+}
+

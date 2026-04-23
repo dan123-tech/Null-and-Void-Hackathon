@@ -40,3 +40,18 @@ class AlertRow(Base):
     src_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     device_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+
+class PacketRow(Base):
+    __tablename__ = "packets"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+    device_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    src_ip: Mapped[str] = mapped_column(String(64), nullable=False)
+    dst_ip: Mapped[str] = mapped_column(String(64), nullable=False)
+    proto: Mapped[str] = mapped_column(String(16), nullable=False)  # TCP/UDP/ICMP
+    src_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    dst_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    flags: Mapped[str | None] = mapped_column(String(32), nullable=True)  # e.g. SYN
+    bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+

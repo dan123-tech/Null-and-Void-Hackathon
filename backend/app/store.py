@@ -10,7 +10,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .models import Alert, Device, DeviceState, RiskScore
-from .orm import AlertRow, DeviceRow
+from .orm import AlertRow, DeviceRow, PacketRow
 
 
 class InMemoryTwinStore:
@@ -188,5 +188,42 @@ def sync_to_db(db: Session) -> None:
     if len(alert_rows) > 600:
         to_delete = alert_rows[600:]
         for r in to_delete:
+            db.delete(r)
+
+    # Generate a few packet-like events per tick for each device
+    for d in STORE.devices():
+        if d.id == STORE.guardian_id:
+            continue
+        # 0-2 packets per sync tick
+        for _ in range(random.randint(0, 2)):
+            proto = random.choice(["TCP", "UDP"])
+            if proto == "TCP":
+                dst_port = random.choice([22, 80, 443, 1883, 3000, 5432])
+                src_port = random.randint(1024, 65535)
+                flags = random.choice(["SYN", "ACK", "PSH,ACK", "FIN,ACK"])
+            else:
+                dst_port = random.choice([53, 67, 68, 123, 161, 1900])
+                src_port = random.randint(1024, 65535)
+                flags = None
+
+            db.add(
+                PacketRow(
+                    id=str(uuid.uuid4()),
+                    ts=now,
+                    device_id=d.id,
+                    src_ip=d.ip,
+                    dst_ip=STORE._devices[STORE.guardian_id].ip,
+                    proto=proto,
+                    src_port=src_port,
+                    dst_port=dst_port,
+                    flags=flags,
+                    bytes=random.randint(64, 1500),
+                )
+            )
+
+    # Keep packets bounded in DB
+    packet_rows = db.scalars(select(PacketRow).order_by(PacketRow.ts.desc())).all()
+    if len(packet_rows) > 2000:
+        for r in packet_rows[2000:]:
             db.delete(r)
 

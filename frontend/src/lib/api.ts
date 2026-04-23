@@ -1,4 +1,4 @@
-import type { Alert, Device, RiskScore, Snapshot } from './types'
+import type { Alert, Device, Packet, RiskScore, Snapshot } from './types'
 import { getToken } from './auth'
 
 function authHeaders() {
@@ -32,6 +32,14 @@ export async function killSwitch(ip: string): Promise<{ ok: boolean; ip: string;
   })
   if (!r.ok) throw new Error(`kill-switch: ${r.status}`)
   return (await r.json()) as { ok: boolean; ip: string; action: string }
+}
+
+export async function fetchDevicePackets(deviceId: string, limit = 50): Promise<Packet[]> {
+  const r = await fetch(`/api/devices/${encodeURIComponent(deviceId)}/packets?limit=${encodeURIComponent(String(limit))}`, {
+    headers: authHeaders(),
+  })
+  if (!r.ok) throw new Error(`packets: ${r.status}`)
+  return (await r.json()) as Packet[]
 }
 
 export function connectSnapshotWS(onSnapshot: (s: Snapshot) => void, onError?: (e: Event) => void) {

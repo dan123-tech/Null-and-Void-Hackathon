@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session
 
 from .auth import authenticate_user, create_access_token, current_user, get_db, jwt_secret, token_from_ws_query
 from .db import Base, ENGINE, session_scope
-from .models import Alert, Device, KillSwitchRequest, KillSwitchResponse, RiskScore, TokenResponse, UserMe
-from .orm import AlertRow, DeviceRow, UserRow
+from .models import Alert, Device, KillSwitchRequest, KillSwitchResponse, Packet, RiskScore, TokenResponse, UserMe
+from .orm import AlertRow, DeviceRow, PacketRow, UserRow
 from .store import STORE, sync_to_db
 
 
@@ -128,6 +128,33 @@ def get_risk(_: UserRow = Depends(current_user), db: Session = Depends(get_db)) 
 def kill_switch(req: KillSwitchRequest, _: UserRow = Depends(current_user)) -> KillSwitchResponse:
     ok, action = STORE.block_ip(req.ip)
     return KillSwitchResponse(ok=ok, ip=req.ip, action=action)
+
+
+@app.get("/api/devices/{device_id}/packets", response_model=List[Packet])
+def get_device_packets(
+    device_id: str,
+    limit: int = 50,
+    _: UserRow = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> List[Packet]:
+    rows = db.scalars(
+        select(PacketRow).where(PacketRow.device_id == device_id).order_by(PacketRow.ts.desc()).limit(limit)
+    ).all()
+    return [
+        Packet(
+            id=r.id,
+            ts=r.ts,
+            device_id=r.device_id,
+            src_ip=r.src_ip,
+            dst_ip=r.dst_ip,
+            proto=r.proto,
+            src_port=r.src_port,
+            dst_port=r.dst_port,
+            flags=r.flags,
+            bytes=r.bytes,
+        )
+        for r in rows
+    ]
 
 
 def snapshot_payload() -> Dict[str, Any]:

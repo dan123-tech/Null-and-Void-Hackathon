@@ -56,3 +56,16 @@ class UserMe(BaseModel):
     email: str
     is_admin: bool
 
+
+class Packet(BaseModel):
+    id: str
+    ts: datetime
+    device_id: str
+    src_ip: str
+    dst_ip: str
+    proto: str
+    src_port: int | None = None
+    dst_port: int | None = None
+    flags: str | None = None
+    bytes: int
+
