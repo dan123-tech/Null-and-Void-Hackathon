@@ -23,6 +23,7 @@ export function Topology({
   onSelect: (id: string | null) => void
 }) {
   const cyRef = useRef<cytoscape.Core | null>(null)
+  const lastIdsRef = useRef<string>('') // used to avoid visible graph refresh
 
   const elements = useMemo(() => {
     const guardian = devices.find((d) => d.id === 'guardian')
@@ -59,6 +60,11 @@ export function Topology({
   useEffect(() => {
     const cy = cyRef.current
     if (!cy) return
+    // Only re-layout when the set of nodes changes (add/remove), not on every refresh tick.
+    const ids = devices.map((d) => d.id).sort().join('|')
+    if (ids === lastIdsRef.current) return
+    lastIdsRef.current = ids
+
     const layout = cy.layout({
       name: 'cose-bilkent',
       animate: true,
@@ -69,7 +75,23 @@ export function Topology({
       gravity: 0.35,
     } as any)
     layout.run()
-  }, [devices.length])
+  }, [devices])
+
+  useEffect(() => {
+    const cy = cyRef.current
+    if (!cy) return
+
+    // Update node data/classes in-place to avoid CytoscapeComponent re-mount flicker.
+    const byId = new Map(devices.map((d) => [d.id, d]))
+    cy.nodes().forEach((n) => {
+      const d = byId.get(n.id())
+      if (!d) return
+      n.data('label', d.hostname || d.ip)
+      n.data('state', d.state)
+      n.removeClass('healthy unknown danger')
+      n.addClass(d.state === 'danger' ? 'danger' : d.state === 'unknown' ? 'unknown' : 'healthy')
+    })
+  }, [devices])
 
   // Pulse animation loop for danger nodes
   useEffect(() => {
@@ -106,7 +128,7 @@ export function Topology({
     return () => {
       cancelled = true
     }
-  }, [devices])
+  }, [])
 
   useEffect(() => {
     const cy = cyRef.current
