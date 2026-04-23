@@ -133,11 +133,6 @@ export function Topology({
           'border-width': 2,
           'border-color': '#3a4a6a',
           'border-opacity': 0.4,
-          'shadow-blur': 18,
-          'shadow-color': (ele: any) => stateColor(ele.data('state')),
-          'shadow-opacity': 0.25,
-          'shadow-offset-x': 0,
-          'shadow-offset-y': 0,
         },
       },
       {
@@ -156,7 +151,6 @@ export function Topology({
           'border-width': 3,
           'border-opacity': 1,
           'border-color': '#9dfcff',
-          'shadow-opacity': 0.45,
         },
       },
       {
@@ -198,7 +192,6 @@ export function Topology({
           style={{ width: '100%', height: '100%' }}
           userPanningEnabled
           userZoomingEnabled
-          wheelSensitivity={0.2}
         />
       </div>
     </div>
