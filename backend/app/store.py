@@ -3,10 +3,14 @@ from __future__ import annotations
 import random
 import time
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Tuple
 
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session
+
 from .models import Alert, Device, DeviceState, RiskScore
+from .orm import AlertRow, DeviceRow
 
 
 class InMemoryTwinStore:
@@ -133,4 +137,56 @@ class InMemoryTwinStore:
 
 
 STORE = InMemoryTwinStore()
+
+
+def sync_to_db(db: Session) -> None:
+    """
+    Mirror the in-memory demo state into Postgres so the UI reads from the DB.
+    """
+    now = datetime.now(timezone.utc)
+
+    # Upsert devices
+    for d in STORE.devices():
+        row = db.get(DeviceRow, d.id)
+        if not row:
+            row = DeviceRow(
+                id=d.id,
+                ip=d.ip,
+                mac=d.mac,
+                hostname=d.hostname,
+                state=d.state.value if isinstance(d.state, DeviceState) else str(d.state),
+                vulnerability_status=d.vulnerability_status,
+                last_seen=now,
+            )
+            db.add(row)
+        else:
+            row.ip = d.ip
+            row.mac = d.mac
+            row.hostname = d.hostname
+            row.state = d.state.value if isinstance(d.state, DeviceState) else str(d.state)
+            row.vulnerability_status = d.vulnerability_status
+            row.last_seen = now
+
+    # Append new alerts since last sync (bounded)
+    existing_ids = set(db.scalars(select(AlertRow.id)).all())
+    for a in STORE.alerts(limit=200):
+        if a.id in existing_ids:
+            continue
+        db.add(
+            AlertRow(
+                id=a.id,
+                ts=a.ts.replace(tzinfo=timezone.utc) if a.ts.tzinfo is None else a.ts,
+                level=a.level,
+                message=a.message,
+                src_ip=a.src_ip,
+                device_id=a.device_id,
+            )
+        )
+
+    # Keep alerts bounded in DB
+    alert_rows = db.scalars(select(AlertRow).order_by(AlertRow.ts.desc())).all()
+    if len(alert_rows) > 600:
+        to_delete = alert_rows[600:]
+        for r in to_delete:
+            db.delete(r)
 

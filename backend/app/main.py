@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 from typing import Any, Dict, List
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from .models import Alert, Device, KillSwitchRequest, KillSwitchResponse, RiskScore
-from .store import STORE
+from .auth import authenticate_user, create_access_token, current_user, get_db, jwt_secret, token_from_ws_query
+from .db import Base, ENGINE, session_scope
+from .models import Alert, Device, KillSwitchRequest, KillSwitchResponse, RiskScore, TokenResponse, UserMe
+from .orm import AlertRow, DeviceRow, UserRow
+from .store import STORE, sync_to_db
 
 
 app = FastAPI(title="Cyber-Sentinel API", version="0.1.0")
@@ -28,44 +35,168 @@ app.add_middleware(
 def health() -> Dict[str, str]:
     return {"ok": "true"}
 
+@app.on_event("startup")
+def _startup() -> None:
+    Base.metadata.create_all(bind=ENGINE)
+
+    # Seed admin user if missing
+    admin_email = os.getenv("ADMIN_EMAIL", "daniel.cocu4@gmail.com")
+    admin_password = os.getenv("ADMIN_PASSWORD", "123456789")
+    from .auth import hash_password
+    from .db import session_scope
+
+    with session_scope() as db:
+        existing = db.scalar(select(UserRow).where(UserRow.email == admin_email))
+        if not existing:
+            db.add(
+                UserRow(
+                    email=admin_email,
+                    password_hash=hash_password(admin_password),
+                    is_admin=True,
+                )
+            )
+        # Ensure DB has an initial snapshot of the simulated twin
+        sync_to_db(db)
+
+
+@app.post("/api/auth/login", response_model=TokenResponse)
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)) -> TokenResponse:
+    # OAuth2PasswordRequestForm uses "username" field; we treat it as email
+    user = authenticate_user(db, form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    token = create_access_token(subject=user.email)
+    return TokenResponse(access_token=token)
+
+
+@app.get("/api/auth/me", response_model=UserMe)
+def me(user: UserRow = Depends(current_user)) -> UserMe:
+    return UserMe(email=user.email, is_admin=user.is_admin)
+
 
 @app.get("/api/devices", response_model=List[Device])
-def get_devices() -> List[Device]:
-    return STORE.devices()
+def get_devices(_: UserRow = Depends(current_user), db: Session = Depends(get_db)) -> List[Device]:
+    rows = db.scalars(select(DeviceRow)).all()
+    return [
+        Device(
+            id=r.id,
+            ip=r.ip,
+            mac=r.mac,
+            hostname=r.hostname,
+            state=r.state,  # pydantic will coerce to enum
+            vulnerability_status=r.vulnerability_status,  # type: ignore[arg-type]
+            last_seen=r.last_seen,
+        )
+        for r in rows
+    ]
 
 
 @app.get("/api/alerts", response_model=List[Alert])
-def get_alerts(limit: int = 100) -> List[Alert]:
-    return STORE.alerts(limit=limit)
+def get_alerts(limit: int = 100, _: UserRow = Depends(current_user), db: Session = Depends(get_db)) -> List[Alert]:
+    rows = db.scalars(select(AlertRow).order_by(AlertRow.ts.desc()).limit(limit)).all()
+    return [
+        Alert(
+            id=r.id,
+            ts=r.ts,
+            level=r.level,  # type: ignore[arg-type]
+            message=r.message,
+            src_ip=r.src_ip,
+            device_id=r.device_id,
+        )
+        for r in rows
+    ]
 
 
 @app.get("/api/risk", response_model=RiskScore)
-def get_risk() -> RiskScore:
-    return STORE.risk()
+def get_risk(_: UserRow = Depends(current_user), db: Session = Depends(get_db)) -> RiskScore:
+    rows = db.scalars(select(DeviceRow)).all()
+    danger = sum(1 for d in rows if d.state == "danger")
+    unknown = sum(1 for d in rows if d.state == "unknown")
+    vulnerable = sum(1 for d in rows if d.vulnerability_status == "vulnerable")
+    score = min(100, danger * 35 + unknown * 10 + vulnerable * 8)
+    label = "LOW"
+    if score >= 70:
+        label = "CRITICAL"
+    elif score >= 40:
+        label = "ELEVATED"
+    elif score >= 20:
+        label = "GUARDED"
+    return RiskScore(score=score, label=label)
 
 
 @app.post("/api/kill-switch", response_model=KillSwitchResponse)
-def kill_switch(req: KillSwitchRequest) -> KillSwitchResponse:
+def kill_switch(req: KillSwitchRequest, _: UserRow = Depends(current_user)) -> KillSwitchResponse:
     ok, action = STORE.block_ip(req.ip)
     return KillSwitchResponse(ok=ok, ip=req.ip, action=action)
 
 
 def snapshot_payload() -> Dict[str, Any]:
-    devices = STORE.devices()
-    risk = STORE.risk()
-    alerts = STORE.alerts(limit=50)
-    blocked = STORE.blocked_ips()
-    return {
-        "ts": asyncio.get_event_loop().time(),
-        "devices": [d.model_dump() for d in devices],
-        "risk": risk.model_dump(),
-        "alerts": [a.model_dump() for a in alerts],
-        "blocked_ips": blocked,
-    }
+    with session_scope() as db:
+        # Ensure DB mirrors simulated state
+        sync_to_db(db)
+
+        device_rows = db.scalars(select(DeviceRow)).all()
+        alert_rows = db.scalars(select(AlertRow).order_by(AlertRow.ts.desc()).limit(50)).all()
+
+        danger = sum(1 for d in device_rows if d.state == "danger")
+        unknown = sum(1 for d in device_rows if d.state == "unknown")
+        vulnerable = sum(1 for d in device_rows if d.vulnerability_status == "vulnerable")
+        score = min(100, danger * 35 + unknown * 10 + vulnerable * 8)
+        label = "LOW"
+        if score >= 70:
+            label = "CRITICAL"
+        elif score >= 40:
+            label = "ELEVATED"
+        elif score >= 20:
+            label = "GUARDED"
+
+        return {
+            "ts": asyncio.get_event_loop().time(),
+            "devices": [
+                Device(
+                    id=r.id,
+                    ip=r.ip,
+                    mac=r.mac,
+                    hostname=r.hostname,
+                    state=r.state,
+                    vulnerability_status=r.vulnerability_status,  # type: ignore[arg-type]
+                    last_seen=r.last_seen,
+                ).model_dump()
+                for r in device_rows
+            ],
+            "risk": RiskScore(score=score, label=label).model_dump(),
+            "alerts": [
+                Alert(
+                    id=r.id,
+                    ts=r.ts,
+                    level=r.level,  # type: ignore[arg-type]
+                    message=r.message,
+                    src_ip=r.src_ip,
+                    device_id=r.device_id,
+                ).model_dump()
+                for r in alert_rows
+            ],
+            "blocked_ips": STORE.blocked_ips(),
+        }
 
 
 @app.websocket("/ws")
 async def ws_stream(ws: WebSocket) -> None:
+    # authenticate via query param token (browser WebSocket can't easily set headers)
+    token = token_from_ws_query(ws)
+    if not token:
+        await ws.close(code=4401)
+        return
+    try:
+        from jose import jwt as _jwt
+
+        payload = _jwt.decode(token, jwt_secret(), algorithms=["HS256"])
+        if not payload.get("sub"):
+            raise ValueError("no sub")
+    except Exception:
+        await ws.close(code=4401)
+        return
+
     await ws.accept()
     try:
         await ws.send_json({"type": "snapshot", "data": snapshot_payload()})

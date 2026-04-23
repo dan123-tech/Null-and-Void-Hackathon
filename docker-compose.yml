@@ -6,12 +6,18 @@ services:
     ports:
       - "8000:8000"
     environment:
+      DATABASE_URL: "postgresql+psycopg://cyber:cyber@postgres:5432/cybersentinel"
+      JWT_SECRET: "${JWT_SECRET:-change-me}"
+      ADMIN_EMAIL: "daniel.cocu4@gmail.com"
+      ADMIN_PASSWORD: "123456789"
       # For later InfluxDB integration (currently unused by demo store)
       INFLUX_URL: "http://influxdb:8086"
       INFLUX_TOKEN: "${INFLUX_TOKEN:-}"
       INFLUX_ORG: "${INFLUX_ORG:-}"
       INFLUX_BUCKET: "${INFLUX_BUCKET:-}"
     restart: unless-stopped
+    depends_on:
+      - postgres
 
   # Optional: local InfluxDB for your Pi (enable when you integrate it)
   influxdb:
@@ -22,6 +28,19 @@ services:
       - influxdb-data:/var/lib/influxdb2
     restart: unless-stopped
 
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: cybersentinel
+      POSTGRES_USER: cyber
+      POSTGRES_PASSWORD: cyber
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
 volumes:
   influxdb-data:
+  postgres-data:
 

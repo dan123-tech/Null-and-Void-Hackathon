@@ -46,3 +46,13 @@ class KillSwitchResponse(BaseModel):
     ip: str
     action: str
 
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class UserMe(BaseModel):
+    email: str
+    is_admin: bool
+

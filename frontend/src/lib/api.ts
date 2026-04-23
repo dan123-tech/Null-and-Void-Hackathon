@@ -1,19 +1,25 @@
 import type { Alert, Device, RiskScore, Snapshot } from './types'
+import { getToken } from './auth'
+
+function authHeaders() {
+  const t = getToken()
+  return t ? ({ Authorization: `Bearer ${t}` } as Record<string, string>) : ({} as Record<string, string>)
+}
 
 export async function fetchDevices(): Promise<Device[]> {
-  const r = await fetch('/api/devices')
+  const r = await fetch('/api/devices', { headers: authHeaders() })
   if (!r.ok) throw new Error(`devices: ${r.status}`)
   return (await r.json()) as Device[]
 }
 
 export async function fetchAlerts(limit = 100): Promise<Alert[]> {
-  const r = await fetch(`/api/alerts?limit=${encodeURIComponent(String(limit))}`)
+  const r = await fetch(`/api/alerts?limit=${encodeURIComponent(String(limit))}`, { headers: authHeaders() })
   if (!r.ok) throw new Error(`alerts: ${r.status}`)
   return (await r.json()) as Alert[]
 }
 
 export async function fetchRisk(): Promise<RiskScore> {
-  const r = await fetch('/api/risk')
+  const r = await fetch('/api/risk', { headers: authHeaders() })
   if (!r.ok) throw new Error(`risk: ${r.status}`)
   return (await r.json()) as RiskScore
 }
@@ -21,7 +27,7 @@ export async function fetchRisk(): Promise<RiskScore> {
 export async function killSwitch(ip: string): Promise<{ ok: boolean; ip: string; action: string }> {
   const r = await fetch('/api/kill-switch', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ ip }),
   })
   if (!r.ok) throw new Error(`kill-switch: ${r.status}`)
@@ -30,7 +36,8 @@ export async function killSwitch(ip: string): Promise<{ ok: boolean; ip: string;
 
 export function connectSnapshotWS(onSnapshot: (s: Snapshot) => void, onError?: (e: Event) => void) {
   const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  const wsUrl = `${proto}://${window.location.host}/ws`
+  const token = getToken()
+  const wsUrl = `${proto}://${window.location.host}/ws${token ? `?token=${encodeURIComponent(token)}` : ''}`
   const ws = new WebSocket(wsUrl)
 
   ws.onmessage = (ev) => {
