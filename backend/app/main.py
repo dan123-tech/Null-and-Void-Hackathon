@@ -10,7 +10,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from .auth import authenticate_user, create_access_token, current_user, get_db, jwt_secret, token_from_ws_query
@@ -38,6 +38,12 @@ def health() -> Dict[str, str]:
 @app.on_event("startup")
 def _startup() -> None:
     Base.metadata.create_all(bind=ENGINE)
+
+    # Lightweight schema upgrades (no Alembic for hackathon deployment)
+    with ENGINE.begin() as conn:
+        # Add new device metadata columns if table existed before
+        conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS vendor VARCHAR(255)"))
+        conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS device_type VARCHAR(64)"))
 
     # Seed admin user if missing
     admin_email = os.getenv("ADMIN_EMAIL", "daniel.cocu4@gmail.com")
