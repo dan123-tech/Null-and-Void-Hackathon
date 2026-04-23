@@ -78,9 +78,12 @@ async def ws_stream(ws: WebSocket) -> None:
 
 
 # Serve the built React dashboard (for LAN users) when available.
-# Build output path: <repo>/frontend/dist
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-_FRONTEND_DIST = _REPO_ROOT / "frontend" / "dist"
+#
+# In Docker we run from:
+# - backend code:   /app/app/main.py
+# - frontend build: /app/frontend/dist
+_APP_ROOT = Path(__file__).resolve().parents[1]  # /app
+_FRONTEND_DIST = _APP_ROOT / "frontend" / "dist"
 
 if _FRONTEND_DIST.exists():
     app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True), name="frontend")
