@@ -70,3 +70,14 @@ class VulnerabilityRow(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     remediation: Mapped[str] = mapped_column(Text, nullable=False)
 
+
+class PortRow(Base):
+    __tablename__ = "ports"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    scanned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+    device_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    port: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    proto: Mapped[str] = mapped_column(String(8), nullable=False, default="tcp")
+    service: Mapped[str | None] = mapped_column(String(64), nullable=True)
+

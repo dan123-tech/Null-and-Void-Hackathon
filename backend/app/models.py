@@ -82,3 +82,10 @@ class Vulnerability(BaseModel):
     description: str
     remediation: str
 
+
+class OpenPort(BaseModel):
+    port: int
+    proto: str = "tcp"
+    service: str | None = None
+    scanned_at: datetime
+

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { AlertLog } from '../components/AlertLog'
-import { DeviceSidebar } from '../components/DeviceSidebar'
+import { DeviceDrawer } from '../components/DeviceDrawer'
 import { DeviceTable } from '../components/DeviceTable'
 import { RiskGauge } from '../components/RiskGauge'
 import { Topology } from '../components/Topology'
-import { connectSnapshotWS, fetchAlerts, fetchDevices, fetchRisk, killSwitch } from '../lib/api'
+import { connectSnapshotWS, fetchAlerts, fetchDevices, fetchRisk } from '../lib/api'
 import { getToken } from '../lib/auth'
 import type { Device, Snapshot } from '../lib/types'
 
@@ -83,10 +83,6 @@ export function DashboardPage() {
     }
   }, [mode])
 
-  const onKillSwitch = async (ip: string) => {
-    await killSwitch(ip)
-  }
-
   return (
     <>
       <header className="topbar">
@@ -99,37 +95,34 @@ export function DashboardPage() {
         </div>
       </header>
 
-      <main className="grid">
-        <section className="leftRail">
-          <RiskGauge score={risk.score} label={risk.label} />
+      <main className="bento">
+        <section className="bentoGraph panel system">
+          <div className="panelHeader">
+            <div className="panelTitle">DIGITAL TWIN</div>
+            <div className="panelHint">Click a device node to inspect.</div>
+          </div>
+          <div className="bentoGraphCanvas">
+            <Topology devices={devices} selectedId={selectedId} onSelect={setSelectedId} />
+          </div>
+        </section>
+
+        <aside className="bentoAlerts panel alert">
           <AlertLog alerts={alerts} />
-        </section>
+        </aside>
 
-        <section className="center">
-          <Topology devices={devices} selectedId={selectedId} onSelect={setSelectedId} />
-          <DeviceTable devices={devices} onSelect={(id) => setSelectedId(id)} />
-        </section>
-
-        <section className="rightRail">
-          {selectedDevice ? (
-            <DeviceSidebar
-              device={selectedDevice}
-              onClose={() => setSelectedId(null)}
-              onKillSwitch={onKillSwitch}
-              killSwitchEnabled={selectedDevice.state === 'danger'}
-            />
-          ) : (
-            <div className="panel emptyState">
-              <div className="panelHeader">
-                <div className="panelTitle">INSPECTOR</div>
-              </div>
-              <div className="muted">
-                Select a node to view IP/MAC, type/vendor, vulnerability status, and packets.
-              </div>
+        <section className="bentoAnalytics panel system">
+          <div className="bentoAnalyticsGrid">
+            <div className="panel system" style={{ overflow: 'hidden' }}>
+              <RiskGauge score={risk.score} label={risk.label} />
             </div>
-          )}
+            <div className="panel system" style={{ overflow: 'hidden' }}>
+              <DeviceTable devices={devices} onSelect={(id) => setSelectedId(id)} />
+            </div>
+          </div>
         </section>
       </main>
+
+      <DeviceDrawer device={selectedDevice} open={Boolean(selectedDevice)} onClose={() => setSelectedId(null)} />
     </>
   )
 }

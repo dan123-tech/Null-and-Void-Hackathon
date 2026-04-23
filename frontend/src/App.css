@@ -179,6 +179,62 @@
   min-height: 0;
 }
 
+/* Bento layout */
+.bento {
+  padding: 14px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 1fr 360px;
+  grid-template-rows: 1fr 320px;
+  grid-template-areas:
+    "graph alerts"
+    "analytics alerts";
+  min-height: calc(100svh - 70px);
+}
+
+.bentoGraph {
+  grid-area: graph;
+  display: flex;
+  flex-direction: column;
+  min-height: 420px;
+}
+
+.bentoGraphCanvas {
+  flex: 1;
+  min-height: 420px;
+}
+
+.bentoAlerts {
+  grid-area: alerts;
+  min-height: 0;
+}
+
+.bentoAnalytics {
+  grid-area: analytics;
+  min-height: 0;
+}
+
+.bentoAnalyticsGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 360px 1fr;
+  padding: 14px;
+}
+
+@media (max-width: 1100px) {
+  .bento {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    grid-template-areas:
+      "graph"
+      "alerts"
+      "analytics";
+  }
+  .bentoAnalyticsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 1100px) {
   .grid {
     grid-template-columns: 1fr;
@@ -207,6 +263,16 @@
   background: linear-gradient(180deg, var(--panel), var(--panel2));
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
   overflow: hidden;
+}
+
+/* neon variants */
+.panel.system {
+  border-color: rgba(31, 224, 215, 0.35);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(31, 224, 215, 0.08);
+}
+.panel.alert {
+  border-color: rgba(255, 59, 59, 0.32);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 59, 59, 0.06);
 }
 
 .panelHeader {
@@ -470,6 +536,69 @@
 .dangerBtn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* Drawer */
+.drawerOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0);
+  pointer-events: none;
+  transition: background 180ms ease;
+  z-index: 50;
+}
+.drawerOverlay.open {
+  background: rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+}
+.drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: min(520px, 92vw);
+  transform: translateX(110%);
+  transition: transform 220ms ease;
+  background: linear-gradient(180deg, rgba(14, 18, 35, 0.9), rgba(9, 13, 26, 0.78));
+  border-left: 1px solid rgba(31, 224, 215, 0.18);
+  backdrop-filter: blur(14px);
+  display: flex;
+  flex-direction: column;
+}
+.drawer.open {
+  transform: translateX(0);
+}
+.drawerHeader {
+  padding: 14px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(64, 102, 160, 0.18);
+}
+.drawerTitle {
+  font-size: 18px;
+  margin-top: 6px;
+}
+.drawerBody {
+  padding: 14px;
+  overflow: auto;
+}
+.healthTrack {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(64, 102, 160, 0.18);
+  border: 1px solid rgba(64, 102, 160, 0.22);
+  overflow: hidden;
+}
+.healthFill {
+  height: 100%;
+  border-radius: 999px;
+}
+.portsGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .emptyState {

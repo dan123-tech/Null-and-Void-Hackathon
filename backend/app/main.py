@@ -18,6 +18,9 @@ from .db import Base, ENGINE, session_scope
 import uuid
 from datetime import datetime, timezone
 
+import re
+import subprocess
+
 from .models import (
     Alert,
     Device,
@@ -28,8 +31,9 @@ from .models import (
     TokenResponse,
     UserMe,
     Vulnerability,
+    OpenPort,
 )
-from .orm import AlertRow, DeviceRow, PacketRow, UserRow, VulnerabilityRow
+from .orm import AlertRow, DeviceRow, PacketRow, UserRow, VulnerabilityRow, PortRow
 from .store import STORE, sync_to_db
 
 
@@ -57,6 +61,8 @@ def _startup() -> None:
         # Add new device metadata columns if table existed before
         conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS vendor VARCHAR(255)"))
         conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS device_type VARCHAR(64)"))
+        conn.execute(text("CREATE TABLE IF NOT EXISTS ports (id VARCHAR(64) PRIMARY KEY, scanned_at TIMESTAMPTZ NOT NULL, device_id VARCHAR(64) NOT NULL, port INTEGER NOT NULL, proto VARCHAR(8) NOT NULL, service VARCHAR(64))"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ports_device_id ON ports(device_id)"))
 
     # Seed admin user if missing
     admin_email = os.getenv("ADMIN_EMAIL", "daniel.cocu4@gmail.com")
@@ -298,6 +304,97 @@ def scan_device_vulns(
 
     db.flush()
     return get_device_vulns(device_id=device_id, db=db, _=_)  # type: ignore[arg-type]
+
+
+@app.get("/api/devices/{device_id}/ports", response_model=List[OpenPort])
+def get_device_ports(
+    device_id: str,
+    _: UserRow = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> List[OpenPort]:
+    rows = db.scalars(select(PortRow).where(PortRow.device_id == device_id).order_by(PortRow.port.asc())).all()
+    return [OpenPort(port=r.port, proto=r.proto, service=r.service, scanned_at=r.scanned_at) for r in rows]
+
+
+def _run_nmap_ports(ip: str) -> list[tuple[int, str | None]]:
+    """
+    Fast scan: top 1000 TCP ports, parse open ports.
+    """
+    cmd = ["nmap", "-Pn", "--top-ports", "1000", "-sS", "-T4", ip]
+    p = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    out = (p.stdout or "") + ("\n" + p.stderr if p.stderr else "")
+    found: list[tuple[int, str | None]] = []
+    for line in out.splitlines():
+        # Example: 22/tcp open  ssh
+        m = re.match(r"^(\d+)/tcp\s+open\s+(\S+)", line.strip())
+        if m:
+            found.append((int(m.group(1)), m.group(2)))
+    return found
+
+
+@app.post("/api/devices/{device_id}/scan-ports", response_model=List[OpenPort])
+def scan_device_ports(
+    device_id: str,
+    _: UserRow = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> List[OpenPort]:
+    dev = db.get(DeviceRow, device_id)
+    if not dev:
+        raise HTTPException(status_code=404, detail="Device not found")
+    if not dev.ip or dev.ip == "unknown":
+        raise HTTPException(status_code=400, detail="Device has no IP")
+
+    now = datetime.now(timezone.utc)
+    results = _run_nmap_ports(dev.ip)
+
+    db.execute(text("DELETE FROM ports WHERE device_id = :d"), {"d": device_id})
+    for port, service in results:
+        db.add(
+            PortRow(
+                id=str(uuid.uuid4()),
+                scanned_at=now,
+                device_id=device_id,
+                port=port,
+                proto="tcp",
+                service=service,
+            )
+        )
+
+    # Update device vulnerability status heuristically if risky ports exposed
+    risky = {23, 2323, 3389, 5900, 445}
+    if any(p in risky for p, _ in results):
+        dev.vulnerability_status = "vulnerable"
+
+    db.flush()
+    return get_device_ports(device_id=device_id, db=db, _=_)  # type: ignore[arg-type]
+
+
+@app.post("/api/devices/{device_id}/isolate")
+def isolate_device(
+    device_id: str,
+    _: UserRow = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    dev = db.get(DeviceRow, device_id)
+    if not dev:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    ip = dev.ip
+    mac = dev.mac
+
+    # NOTE: In Docker this affects the container network namespace unless run with host networking/privileged setup.
+    rules = []
+    if ip and ip != "unknown":
+        rules.append(["iptables", "-I", "INPUT", "-s", ip, "-j", "DROP"])
+        rules.append(["iptables", "-I", "FORWARD", "-s", ip, "-j", "DROP"])
+    if mac and mac != "unknown":
+        rules.append(["iptables", "-I", "INPUT", "-m", "mac", "--mac-source", mac, "-j", "DROP"])
+        rules.append(["iptables", "-I", "FORWARD", "-m", "mac", "--mac-source", mac, "-j", "DROP"])
+
+    for r in rules:
+        subprocess.run(r, check=False, capture_output=True, text=True)
+
+    return {"ok": "true", "device_id": device_id, "action": "isolate", "ip": ip, "mac": mac}
 
 
 def snapshot_payload() -> Dict[str, Any]:

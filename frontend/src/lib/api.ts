@@ -57,6 +57,24 @@ export async function scanDeviceVulnerabilities(deviceId: string): Promise<Vulne
   return (await r.json()) as Vulnerability[]
 }
 
+export async function fetchDevicePorts(deviceId: string) {
+  const r = await fetch(`/api/devices/${encodeURIComponent(deviceId)}/ports`, { headers: authHeaders() })
+  if (!r.ok) throw new Error(`ports: ${r.status}`)
+  return (await r.json()) as { port: number; proto: string; service?: string | null; scanned_at: string }[]
+}
+
+export async function scanDevicePorts(deviceId: string) {
+  const r = await fetch(`/api/devices/${encodeURIComponent(deviceId)}/scan-ports`, { method: 'POST', headers: authHeaders() })
+  if (!r.ok) throw new Error(`scan-ports: ${r.status}`)
+  return (await r.json()) as { port: number; proto: string; service?: string | null; scanned_at: string }[]
+}
+
+export async function isolateDevice(deviceId: string) {
+  const r = await fetch(`/api/devices/${encodeURIComponent(deviceId)}/isolate`, { method: 'POST', headers: authHeaders() })
+  if (!r.ok) throw new Error(`isolate: ${r.status}`)
+  return (await r.json()) as { ok: string; device_id: string; action: string; ip: string; mac: string }
+}
+
 export function connectSnapshotWS(onSnapshot: (s: Snapshot) => void, onError?: (e: Event) => void) {
   const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
   const token = getToken()
