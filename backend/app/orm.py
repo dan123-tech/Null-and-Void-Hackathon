@@ -81,3 +81,30 @@ class PortRow(Base):
     proto: Mapped[str] = mapped_column(String(8), nullable=False, default="tcp")
     service: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+
+class MonitorStatusRow(Base):
+    __tablename__ = "monitor_status"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)  # e.g. host:<id> or svc:<host_id>:<name>
+    object_type: Mapped[str] = mapped_column(String(16), index=True, nullable=False)  # host/service
+    host_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    service_name: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    state: Mapped[str] = mapped_column(String(16), index=True, nullable=False)  # OK/WARNING/CRITICAL/UNKNOWN
+    output: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    last_check: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+    last_state_change: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+    acknowledged: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class MonitorEventRow(Base):
+    __tablename__ = "monitor_events"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+    object_type: Mapped[str] = mapped_column(String(16), index=True, nullable=False)  # host/service
+    object_id: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
+    host_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    service_name: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    state: Mapped[str] = mapped_column(String(16), index=True, nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+

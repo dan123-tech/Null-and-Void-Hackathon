@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+'use client'
+
 import CytoscapeComponent from 'react-cytoscapejs'
 import cytoscape, { type Core, type ElementDefinition, type EventObject } from 'cytoscape'
 import coseBilkent from 'cytoscape-cose-bilkent'
@@ -8,9 +11,9 @@ import type { Device } from '../lib/types'
 cytoscape.use(coseBilkent)
 
 function stateColor(state: Device['state']) {
-  if (state === 'healthy') return '#1fe0d7' // cyan-safe
+  if (state === 'healthy') return '#1fe0d7'
   if (state === 'danger') return '#ff3b3b'
-  return '#ffb020' // amber
+  return '#ffb020'
 }
 
 export function Topology({
@@ -23,7 +26,7 @@ export function Topology({
   onSelect: (id: string | null) => void
 }) {
   const cyRef = useRef<cytoscape.Core | null>(null)
-  const lastIdsRef = useRef<string>('') // used to avoid visible graph refresh
+  const lastIdsRef = useRef<string>('') // avoid visible refresh
 
   const buildElements = (current: Device[]) => {
     const guardian = current.find((d) => d.id === 'guardian')
@@ -57,9 +60,7 @@ export function Topology({
     return [...nodes, ...edges]
   }
 
-  // Critical: keep Cytoscape `elements` stable between refresh ticks to avoid visible redraw.
   const [elements, setElements] = useState<ElementDefinition[]>(() => buildElements(devices))
-
   const idSignature = useMemo(() => devices.map((d) => d.id).sort().join('|'), [devices])
 
   useEffect(() => {
@@ -68,14 +69,10 @@ export function Topology({
     setElements(buildElements(devices))
   }, [devices, idSignature])
 
-  // (elements are managed via buildElements + state above)
-
   useEffect(() => {
     const cy = cyRef.current
     if (!cy) return
-    // Only re-layout when the set of nodes changes (add/remove), not on every refresh tick.
-    const ids = idSignature
-    if (!ids) return
+    if (!idSignature) return
 
     const layout = cy.layout({
       name: 'cose-bilkent',
@@ -92,8 +89,6 @@ export function Topology({
   useEffect(() => {
     const cy = cyRef.current
     if (!cy) return
-
-    // Update node data/classes in-place to avoid CytoscapeComponent re-mount flicker.
     const byId = new Map(devices.map((d) => [d.id, d]))
     cy.nodes().forEach((n) => {
       const d = byId.get(n.id())
@@ -105,7 +100,6 @@ export function Topology({
     })
   }, [devices])
 
-  // Pulse animation loop for danger nodes
   useEffect(() => {
     const cy = cyRef.current
     if (!cy) return

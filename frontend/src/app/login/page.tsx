@@ -1,9 +1,12 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { login } from '../lib/auth'
+'use client'
 
-export function LoginPage() {
-  const nav = useNavigate()
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+
+import { login } from '../../lib/auth'
+
+export default function LoginPage() {
+  const router = useRouter()
   const [email, setEmail] = useState('daniel.cocu4@gmail.com')
   const [password, setPassword] = useState('123456789')
   const [err, setErr] = useState<string | null>(null)
@@ -15,7 +18,7 @@ export function LoginPage() {
     setBusy(true)
     try {
       await login(email, password)
-      nav('/dashboard')
+      router.replace('/dashboard')
     } catch (e2) {
       setErr(e2 instanceof Error ? e2.message : 'Login failed')
     } finally {

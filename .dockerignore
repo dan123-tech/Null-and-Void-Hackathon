@@ -10,6 +10,7 @@
 **/*.log
 .git
 .gitignore
+frontend-vite
 terminals
 agent-transcripts
 

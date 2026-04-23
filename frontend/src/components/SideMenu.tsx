@@ -1,15 +1,20 @@
-import { NavLink } from 'react-router-dom'
+'use client'
+
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 
 const items = [
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/devices', label: 'Devices' },
-  { to: '/traffic', label: 'Traffic' },
-  { to: '/alerts', label: 'Alerts' },
-  { to: '/response', label: 'Response' },
+  { to: '/problems', label: 'Problems' },
+  { to: '/hosts', label: 'Hosts' },
+  { to: '/services', label: 'Services' },
+  { to: '/history', label: 'History' },
+  { to: '/dashboard', label: 'Digital Twin' },
   { to: '/settings', label: 'Settings' },
 ]
 
 export function SideMenu() {
+  const pathname = usePathname()
+
   return (
     <aside className="sideNav">
       <div className="sideNavTop">
@@ -23,21 +28,18 @@ export function SideMenu() {
       </div>
 
       <nav className="sideNavList" aria-label="Main navigation">
-        {items.map((it) => (
-          <NavLink
-            key={it.to}
-            to={it.to}
-            className={({ isActive }) => `sideNavItem ${isActive ? 'active' : ''}`}
-          >
-            <span className="sideNavDot" aria-hidden="true" />
-            <span>{it.label}</span>
-          </NavLink>
-        ))}
+        {items.map((it) => {
+          const isActive = pathname === it.to || (it.to !== '/dashboard' && pathname?.startsWith(it.to))
+          return (
+            <Link key={it.to} href={it.to} className={`sideNavItem ${isActive ? 'active' : ''}`}>
+              <span className="sideNavDot" aria-hidden="true" />
+              <span>{it.label}</span>
+            </Link>
+          )
+        })}
       </nav>
 
-      <div className="sideNavFoot muted small">
-        Tip: topology updates only on join/leave.
-      </div>
+      <div className="sideNavFoot muted small">Tip: topology updates only on join/leave.</div>
     </aside>
   )
 }

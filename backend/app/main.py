@@ -32,8 +32,12 @@ from .models import (
     UserMe,
     Vulnerability,
     OpenPort,
+    MonitorEvent,
+    MonitorHost,
+    MonitorService,
+    ServiceState,
 )
-from .orm import AlertRow, DeviceRow, PacketRow, UserRow, VulnerabilityRow, PortRow
+from .orm import AlertRow, DeviceRow, PacketRow, UserRow, VulnerabilityRow, PortRow, MonitorEventRow, MonitorStatusRow
 from .store import STORE, sync_to_db
 
 
@@ -64,6 +68,23 @@ def _startup() -> None:
         conn.execute(text("CREATE TABLE IF NOT EXISTS ports (id VARCHAR(64) PRIMARY KEY, scanned_at TIMESTAMPTZ NOT NULL, device_id VARCHAR(64) NOT NULL, port INTEGER NOT NULL, proto VARCHAR(8) NOT NULL, service VARCHAR(64))"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ports_device_id ON ports(device_id)"))
 
+        conn.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS monitor_status (id VARCHAR(128) PRIMARY KEY, object_type VARCHAR(16) NOT NULL, host_id VARCHAR(64) NOT NULL, service_name VARCHAR(64), state VARCHAR(16) NOT NULL, output TEXT NOT NULL, last_check TIMESTAMPTZ NOT NULL, last_state_change TIMESTAMPTZ NOT NULL, acknowledged BOOLEAN NOT NULL DEFAULT FALSE)"
+            )
+        )
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_monitor_status_object_type ON monitor_status(object_type)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_monitor_status_host_id ON monitor_status(host_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_monitor_status_state ON monitor_status(state)"))
+
+        conn.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS monitor_events (id VARCHAR(64) PRIMARY KEY, ts TIMESTAMPTZ NOT NULL, object_type VARCHAR(16) NOT NULL, object_id VARCHAR(128) NOT NULL, host_id VARCHAR(64), service_name VARCHAR(64), state VARCHAR(16) NOT NULL, message TEXT NOT NULL)"
+            )
+        )
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_monitor_events_ts ON monitor_events(ts)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_monitor_events_object_id ON monitor_events(object_id)"))
+
     # Seed admin user if missing
     admin_email = os.getenv("ADMIN_EMAIL", "daniel.cocu4@gmail.com")
     admin_password = os.getenv("ADMIN_PASSWORD", "123456789")
@@ -82,6 +103,253 @@ def _startup() -> None:
             )
         # Ensure DB has an initial snapshot of the simulated twin
         sync_to_db(db)
+
+    # Start a small check scheduler to keep an Icinga-like status model updated.
+    try:
+        loop = asyncio.get_event_loop()
+        loop.create_task(_monitor_loop())
+    except Exception:
+        # If we can't start the background loop (e.g. during sync startup), the UI can still work via snapshot endpoints.
+        pass
+
+
+def _svc_id(host_id: str, name: str | None = None) -> str:
+    return f"host:{host_id}" if not name else f"svc:{host_id}:{name}"
+
+
+def _state_rank(s: str) -> int:
+    if s == ServiceState.critical.value:
+        return 3
+    if s == ServiceState.warning.value:
+        return 2
+    if s == ServiceState.ok.value:
+        return 1
+    return 0
+
+
+def _upsert_status(
+    db: Session,
+    object_type: str,
+    host_id: str,
+    service_name: str | None,
+    state: ServiceState,
+    output: str,
+    now: datetime,
+) -> None:
+    oid = _svc_id(host_id, service_name)
+    row = db.get(MonitorStatusRow, oid)
+    if not row:
+        db.add(
+            MonitorStatusRow(
+                id=oid,
+                object_type=object_type,
+                host_id=host_id,
+                service_name=service_name,
+                state=state.value,
+                output=output,
+                last_check=now,
+                last_state_change=now,
+                acknowledged=False,
+            )
+        )
+        db.add(
+            MonitorEventRow(
+                id=str(uuid.uuid4()),
+                ts=now,
+                object_type=object_type,
+                object_id=oid,
+                host_id=host_id,
+                service_name=service_name,
+                state=state.value,
+                message=output,
+            )
+        )
+        return
+
+    prev_state = row.state
+    row.state = state.value
+    row.output = output
+    row.last_check = now
+    if prev_state != state.value:
+        row.last_state_change = now
+        row.acknowledged = False
+        db.add(
+            MonitorEventRow(
+                id=str(uuid.uuid4()),
+                ts=now,
+                object_type=object_type,
+                object_id=oid,
+                host_id=host_id,
+                service_name=service_name,
+                state=state.value,
+                message=f"{prev_state} -> {state.value}: {output}",
+            )
+        )
+
+
+def _evaluate_host(dev: DeviceRow, now: datetime) -> tuple[ServiceState, str]:
+    # Freshness as a ping-like proxy: OK if seen recently; otherwise CRITICAL.
+    age_s = max(0.0, (now - dev.last_seen).total_seconds())
+    if age_s <= 15:
+        return (ServiceState.ok, f"Reachable (last_seen {int(age_s)}s ago)")
+    if age_s <= 60:
+        return (ServiceState.warning, f"Stale (last_seen {int(age_s)}s ago)")
+    return (ServiceState.critical, f"Unreachable (last_seen {int(age_s)}s ago)")
+
+
+def _evaluate_service_ports(dev: DeviceRow, ports: list[PortRow]) -> tuple[ServiceState, str]:
+    if not ports:
+        return (ServiceState.unknown, "No port scan results")
+    risky = {23, 2323, 445, 3389, 5900}
+    open_ports = sorted({p.port for p in ports})
+    risky_open = [p for p in open_ports if p in risky]
+    if risky_open:
+        return (ServiceState.warning, f"Risky ports open: {', '.join(map(str, risky_open))}")
+    return (ServiceState.ok, f"Open ports: {', '.join(map(str, open_ports[:15]))}{'…' if len(open_ports) > 15 else ''}")
+
+
+def _evaluate_service_vulns(dev: DeviceRow, vulns: list[VulnerabilityRow]) -> tuple[ServiceState, str]:
+    if not vulns:
+        if dev.vulnerability_status == "patched":
+            return (ServiceState.ok, "No findings")
+        return (ServiceState.unknown, "No vulnerability scan results")
+    # Treat any critical/high as CRITICAL; medium as WARNING; otherwise WARNING.
+    sev = {v.severity for v in vulns}
+    if "critical" in sev or "high" in sev:
+        return (ServiceState.critical, f"{len(vulns)} findings (high/critical present)")
+    if "medium" in sev:
+        return (ServiceState.warning, f"{len(vulns)} findings (medium)")
+    return (ServiceState.warning, f"{len(vulns)} findings")
+
+
+async def _monitor_loop() -> None:
+    # Keep monitoring state updated every 10s. (Snapshot/websocket remains 2s.)
+    await asyncio.sleep(1)
+    while True:
+        try:
+            now = datetime.now(timezone.utc)
+            with session_scope() as db:
+                # Ensure DB mirrors simulated state so checks have fresh inputs.
+                sync_to_db(db)
+
+                devices = db.scalars(select(DeviceRow)).all()
+                for dev in devices:
+                    host_state, host_out = _evaluate_host(dev, now)
+                    _upsert_status(db, "host", dev.id, None, host_state, host_out, now)
+
+                    port_rows = db.scalars(select(PortRow).where(PortRow.device_id == dev.id)).all()
+                    ports_state, ports_out = _evaluate_service_ports(dev, list(port_rows))
+                    _upsert_status(db, "service", dev.id, "ports", ports_state, ports_out, now)
+
+                    vuln_rows = db.scalars(select(VulnerabilityRow).where(VulnerabilityRow.device_id == dev.id)).all()
+                    vulns_state, vulns_out = _evaluate_service_vulns(dev, list(vuln_rows))
+                    _upsert_status(db, "service", dev.id, "vulns", vulns_state, vulns_out, now)
+        except Exception:
+            # Keep the loop resilient; errors will self-heal next tick.
+            pass
+
+        await asyncio.sleep(10)
+
+
+@app.get("/api/monitor/hosts", response_model=List[MonitorHost])
+def monitor_hosts(_: UserRow = Depends(current_user), db: Session = Depends(get_db)) -> List[MonitorHost]:
+    # Join device rows with host status
+    devices = {d.id: d for d in db.scalars(select(DeviceRow)).all()}
+    rows = db.scalars(select(MonitorStatusRow).where(MonitorStatusRow.object_type == "host")).all()
+    out: list[MonitorHost] = []
+    for r in rows:
+        d = devices.get(r.host_id)
+        if not d:
+            continue
+        out.append(
+            MonitorHost(
+                id=r.host_id,
+                name=d.hostname or d.ip,
+                ip=d.ip,
+                mac=d.mac,
+                state=ServiceState(r.state),
+                output=r.output,
+                last_check=r.last_check,
+                last_state_change=r.last_state_change,
+                acknowledged=r.acknowledged,
+            )
+        )
+    out.sort(key=lambda h: (-_state_rank(h.state.value), h.name))
+    return out
+
+
+@app.get("/api/monitor/services", response_model=List[MonitorService])
+def monitor_services(_: UserRow = Depends(current_user), db: Session = Depends(get_db)) -> List[MonitorService]:
+    devices = {d.id: d for d in db.scalars(select(DeviceRow)).all()}
+    rows = db.scalars(select(MonitorStatusRow).where(MonitorStatusRow.object_type == "service")).all()
+    out: list[MonitorService] = []
+    for r in rows:
+        d = devices.get(r.host_id)
+        if not d or not r.service_name:
+            continue
+        out.append(
+            MonitorService(
+                id=r.id,
+                host_id=r.host_id,
+                host_name=d.hostname or d.ip,
+                name=r.service_name,
+                state=ServiceState(r.state),
+                output=r.output,
+                last_check=r.last_check,
+                last_state_change=r.last_state_change,
+                acknowledged=r.acknowledged,
+            )
+        )
+    out.sort(key=lambda s: (-_state_rank(s.state.value), s.host_name, s.name))
+    return out
+
+
+@app.get("/api/monitor/problems", response_model=List[MonitorService])
+def monitor_problems(_: UserRow = Depends(current_user), db: Session = Depends(get_db)) -> List[MonitorService]:
+    # Problems = non-OK hosts/services, excluding acknowledged
+    devices = {d.id: d for d in db.scalars(select(DeviceRow)).all()}
+    rows = db.scalars(select(MonitorStatusRow).where(MonitorStatusRow.state != ServiceState.ok.value)).all()
+    out: list[MonitorService] = []
+    for r in rows:
+        if r.acknowledged:
+            continue
+        d = devices.get(r.host_id)
+        if not d:
+            continue
+        name = r.service_name or "host"
+        out.append(
+            MonitorService(
+                id=r.id,
+                host_id=r.host_id,
+                host_name=d.hostname or d.ip,
+                name=name,
+                state=ServiceState(r.state),
+                output=r.output,
+                last_check=r.last_check,
+                last_state_change=r.last_state_change,
+                acknowledged=r.acknowledged,
+            )
+        )
+    out.sort(key=lambda s: (-_state_rank(s.state.value), s.host_name, s.name))
+    return out
+
+
+@app.get("/api/monitor/history", response_model=List[MonitorEvent])
+def monitor_history(limit: int = 200, _: UserRow = Depends(current_user), db: Session = Depends(get_db)) -> List[MonitorEvent]:
+    rows = db.scalars(select(MonitorEventRow).order_by(MonitorEventRow.ts.desc()).limit(limit)).all()
+    return [
+        MonitorEvent(
+            id=r.id,
+            ts=r.ts,
+            object_type=r.object_type,  # type: ignore[arg-type]
+            object_id=r.object_id,
+            host_id=r.host_id,
+            service_name=r.service_name,
+            state=ServiceState(r.state),
+            message=r.message,
+        )
+        for r in rows
+    ]
 
 
 @app.post("/api/auth/login", response_model=TokenResponse)
@@ -475,19 +743,43 @@ async def ws_stream(ws: WebSocket) -> None:
         return
 
 
-# Serve the built React dashboard (for LAN users) when available.
+# Serve the built Next.js (static export) dashboard (for LAN users) when available.
+#
+# Next export (App Router) produces `<route>.html` files (e.g. `login.html`) at the export root,
+# so we implement a small resolver that maps `/login` -> `login.html`.
 #
 # In Docker we run from:
-# - backend code:   /app/app/main.py
-# - frontend build: /app/frontend/dist
+# - backend code:    /app/app/main.py
+# - frontend export: /app/frontend/out
 _APP_ROOT = Path(__file__).resolve().parents[1]  # /app
-_FRONTEND_DIST = _APP_ROOT / "frontend" / "dist"
+_FRONTEND_DIST = _APP_ROOT / "frontend" / "out"
 
 if _FRONTEND_DIST.exists():
-    app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True), name="frontend")
+    # Serve Next static assets.
+    _NEXT_ASSETS = _FRONTEND_DIST / "_next"
+    if _NEXT_ASSETS.exists():
+        app.mount("/_next", StaticFiles(directory=str(_NEXT_ASSETS)), name="next-assets")  # type: ignore[name-defined]
+
+    def _frontend_file(full_path: str) -> Path:
+        p = (full_path or "").lstrip("/")
+        if not p:
+            return _FRONTEND_DIST / "index.html"
+
+        direct = _FRONTEND_DIST / p
+        if direct.exists() and direct.is_file():
+            return direct
+
+        # Map route-style paths to exported `<route>.html`
+        if Path(p).suffix == "":
+            html = _FRONTEND_DIST / f"{p}.html"
+            if html.exists():
+                return html
+
+        # Fallback to root index (client-side redirect handles / -> /dashboard).
+        return _FRONTEND_DIST / "index.html"
 
     @app.get("/{full_path:path}")
-    def spa_fallback(full_path: str) -> FileResponse:  # noqa: ARG001
-        index = _FRONTEND_DIST / "index.html"
-        return FileResponse(str(index))
+    def frontend(full_path: str) -> FileResponse:
+        f = _frontend_file(full_path)
+        return FileResponse(str(f))
 

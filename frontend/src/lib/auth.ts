@@ -1,6 +1,7 @@
 const TOKEN_KEY = 'cyber_sentinel_token'
 
 export function getToken(): string | null {
+  if (typeof window === 'undefined') return null
   return localStorage.getItem(TOKEN_KEY)
 }
 

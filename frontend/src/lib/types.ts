@@ -60,3 +60,40 @@ export type Vulnerability = {
   remediation: string
 }
 
+export type ServiceState = 'OK' | 'WARNING' | 'CRITICAL' | 'UNKNOWN'
+
+export type MonitorHost = {
+  id: string
+  name: string
+  ip: string
+  mac: string
+  state: ServiceState
+  output: string
+  last_check: string
+  last_state_change: string
+  acknowledged: boolean
+}
+
+export type MonitorService = {
+  id: string
+  host_id: string
+  host_name: string
+  name: string
+  state: ServiceState
+  output: string
+  last_check: string
+  last_state_change: string
+  acknowledged: boolean
+}
+
+export type MonitorEvent = {
+  id: string
+  ts: string
+  object_type: 'host' | 'service'
+  object_id: string
+  host_id?: string | null
+  service_name?: string | null
+  state: ServiceState
+  message: string
+}
+

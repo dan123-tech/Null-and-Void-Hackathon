@@ -24,7 +24,7 @@ RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 COPY backend/app /app/app
 
 # Copy built React UI into the location FastAPI serves from
-COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
+COPY --from=frontend-build /app/frontend/out /app/frontend/out
 
 EXPOSE 8000
 

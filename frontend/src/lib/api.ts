@@ -1,4 +1,14 @@
-import type { Alert, Device, Packet, RiskScore, Snapshot, Vulnerability } from './types'
+import type {
+  Alert,
+  Device,
+  MonitorEvent,
+  MonitorHost,
+  MonitorService,
+  Packet,
+  RiskScore,
+  Snapshot,
+  Vulnerability,
+} from './types'
 import { getToken } from './auth'
 
 function authHeaders() {
@@ -100,5 +110,29 @@ export function connectSnapshotWS(onSnapshot: (s: Snapshot) => void, onError?: (
 
   ws.onerror = (e) => onError?.(e)
   return ws
+}
+
+export async function fetchMonitorProblems(): Promise<MonitorService[]> {
+  const r = await fetch('/api/monitor/problems', { headers: authHeaders() })
+  if (!r.ok) throw new ApiError(`monitor/problems: ${r.status}`, r.status)
+  return (await r.json()) as MonitorService[]
+}
+
+export async function fetchMonitorHosts(): Promise<MonitorHost[]> {
+  const r = await fetch('/api/monitor/hosts', { headers: authHeaders() })
+  if (!r.ok) throw new ApiError(`monitor/hosts: ${r.status}`, r.status)
+  return (await r.json()) as MonitorHost[]
+}
+
+export async function fetchMonitorServices(): Promise<MonitorService[]> {
+  const r = await fetch('/api/monitor/services', { headers: authHeaders() })
+  if (!r.ok) throw new ApiError(`monitor/services: ${r.status}`, r.status)
+  return (await r.json()) as MonitorService[]
+}
+
+export async function fetchMonitorHistory(limit = 200): Promise<MonitorEvent[]> {
+  const r = await fetch(`/api/monitor/history?limit=${encodeURIComponent(String(limit))}`, { headers: authHeaders() })
+  if (!r.ok) throw new ApiError(`monitor/history: ${r.status}`, r.status)
+  return (await r.json()) as MonitorEvent[]
 }
 

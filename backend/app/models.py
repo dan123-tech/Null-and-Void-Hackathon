@@ -89,3 +89,45 @@ class OpenPort(BaseModel):
     service: str | None = None
     scanned_at: datetime
 
+
+class ServiceState(str, Enum):
+    ok = "OK"
+    warning = "WARNING"
+    critical = "CRITICAL"
+    unknown = "UNKNOWN"
+
+
+class MonitorHost(BaseModel):
+    id: str
+    name: str
+    ip: str
+    mac: str
+    state: ServiceState
+    output: str
+    last_check: datetime
+    last_state_change: datetime
+    acknowledged: bool = False
+
+
+class MonitorService(BaseModel):
+    id: str
+    host_id: str
+    host_name: str
+    name: str
+    state: ServiceState
+    output: str
+    last_check: datetime
+    last_state_change: datetime
+    acknowledged: bool = False
+
+
+class MonitorEvent(BaseModel):
+    id: str
+    ts: datetime
+    object_type: Literal["host", "service"]
+    object_id: str
+    host_id: str | None = None
+    service_name: str | None = None
+    state: ServiceState
+    message: str
+

@@ -1,3 +1,5 @@
+'use client'
+
 import { useEffect, useMemo, useState } from 'react'
 
 import { fetchDevicePorts, fetchDeviceVulnerabilities, isolateDevice, scanDevicePorts, scanDeviceVulnerabilities } from '../lib/api'
@@ -46,7 +48,9 @@ export function DeviceDrawer({
           <div>
             <div className="panelTitle">DEVICE</div>
             <div className="drawerTitle">{device.hostname || device.ip}</div>
-            <div className="muted small">{device.vendor || 'Unknown vendor'} · {(device.device_type || 'unknown').toUpperCase()}</div>
+            <div className="muted small">
+              {device.vendor || 'Unknown vendor'} · {(device.device_type || 'unknown').toUpperCase()}
+            </div>
           </div>
           <button className="iconBtn" onClick={onClose} aria-label="Close drawer">
             ✕
@@ -108,7 +112,8 @@ export function DeviceDrawer({
                 <div className="portsGrid">
                   {ports.map((p) => (
                     <div key={`${p.proto}-${p.port}`} className="pill mono">
-                      {p.port}/{p.proto}{p.service ? ` · ${p.service}` : ''}
+                      {p.port}/{p.proto}
+                      {p.service ? ` · ${p.service}` : ''}
                     </div>
                   ))}
                 </div>
