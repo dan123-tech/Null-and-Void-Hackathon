@@ -5,11 +5,13 @@ import { DeviceDrawer } from '../components/DeviceDrawer'
 import { DeviceTable } from '../components/DeviceTable'
 import { RiskGauge } from '../components/RiskGauge'
 import { Topology } from '../components/Topology'
-import { connectSnapshotWS, fetchAlerts, fetchDevices, fetchRisk } from '../lib/api'
-import { getToken } from '../lib/auth'
+import { ApiError, connectSnapshotWS, fetchAlerts, fetchDevices, fetchRisk } from '../lib/api'
+import { clearToken, getToken } from '../lib/auth'
+import { useNavigate } from 'react-router-dom'
 import type { Device, Snapshot } from '../lib/types'
 
 export function DashboardPage() {
+  const nav = useNavigate()
   const [devices, setDevices] = useState<Device[]>([])
   const [alerts, setAlerts] = useState<Snapshot['alerts']>([])
   const [risk, setRisk] = useState<Snapshot['risk']>({ score: 0, label: 'LOW' })
@@ -21,6 +23,11 @@ export function DashboardPage() {
     () => (selectedId ? devices.find((d) => d.id === selectedId) ?? null : null),
     [devices, selectedId],
   )
+
+  const forceReauth = () => {
+    clearToken()
+    nav('/login', { replace: true })
+  }
 
   useEffect(() => {
     if (!getToken()) return
@@ -36,16 +43,21 @@ export function DashboardPage() {
       () => setConnectionState('degraded'),
     )
 
+    ws.onclose = (ev) => {
+      // 4401 used by backend for WS auth failure
+      if (ev.code === 4401) forceReauth()
+      setConnectionState('degraded')
+      setMode('poll')
+    }
+
     const failover = window.setTimeout(() => {
-      if (connectionState !== 'live') {
-        try {
-          ws.close()
-        } catch {
-          // ignore
-        }
-        setMode('poll')
-        setConnectionState('degraded')
+      try {
+        if (ws.readyState !== WebSocket.OPEN) ws.close()
+      } catch {
+        // ignore
       }
+      setMode('poll')
+      setConnectionState('degraded')
     }, 2500)
 
     return () => {
@@ -70,8 +82,9 @@ export function DashboardPage() {
         setDevices(d)
         setAlerts(a)
         setRisk(r)
-      } catch {
-        // keep trying
+      } catch (e) {
+        // keep trying, but if auth fails, force re-login
+        if (e instanceof ApiError && e.status === 401) forceReauth()
       }
     }
 
@@ -82,6 +95,21 @@ export function DashboardPage() {
       window.clearInterval(id)
     }
   }, [mode])
+
+  // Always do an immediate fetch to avoid "blank" UI if WS is slow.
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const [d, a, r] = await Promise.all([fetchDevices(), fetchAlerts(50), fetchRisk()])
+        setDevices(d)
+        setAlerts(a)
+        setRisk(r)
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) forceReauth()
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <>

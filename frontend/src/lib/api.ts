@@ -6,21 +6,29 @@ function authHeaders() {
   return t ? ({ Authorization: `Bearer ${t}` } as Record<string, string>) : ({} as Record<string, string>)
 }
 
+export class ApiError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
+
 export async function fetchDevices(): Promise<Device[]> {
   const r = await fetch('/api/devices', { headers: authHeaders() })
-  if (!r.ok) throw new Error(`devices: ${r.status}`)
+  if (!r.ok) throw new ApiError(`devices: ${r.status}`, r.status)
   return (await r.json()) as Device[]
 }
 
 export async function fetchAlerts(limit = 100): Promise<Alert[]> {
   const r = await fetch(`/api/alerts?limit=${encodeURIComponent(String(limit))}`, { headers: authHeaders() })
-  if (!r.ok) throw new Error(`alerts: ${r.status}`)
+  if (!r.ok) throw new ApiError(`alerts: ${r.status}`, r.status)
   return (await r.json()) as Alert[]
 }
 
 export async function fetchRisk(): Promise<RiskScore> {
   const r = await fetch('/api/risk', { headers: authHeaders() })
-  if (!r.ok) throw new Error(`risk: ${r.status}`)
+  if (!r.ok) throw new ApiError(`risk: ${r.status}`, r.status)
   return (await r.json()) as RiskScore
 }
 
@@ -30,7 +38,7 @@ export async function killSwitch(ip: string): Promise<{ ok: boolean; ip: string;
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ ip }),
   })
-  if (!r.ok) throw new Error(`kill-switch: ${r.status}`)
+  if (!r.ok) throw new ApiError(`kill-switch: ${r.status}`, r.status)
   return (await r.json()) as { ok: boolean; ip: string; action: string }
 }
 
@@ -38,13 +46,13 @@ export async function fetchDevicePackets(deviceId: string, limit = 50): Promise<
   const r = await fetch(`/api/devices/${encodeURIComponent(deviceId)}/packets?limit=${encodeURIComponent(String(limit))}`, {
     headers: authHeaders(),
   })
-  if (!r.ok) throw new Error(`packets: ${r.status}`)
+  if (!r.ok) throw new ApiError(`packets: ${r.status}`, r.status)
   return (await r.json()) as Packet[]
 }
 
 export async function fetchDeviceVulnerabilities(deviceId: string): Promise<Vulnerability[]> {
   const r = await fetch(`/api/devices/${encodeURIComponent(deviceId)}/vulnerabilities`, { headers: authHeaders() })
-  if (!r.ok) throw new Error(`vulns: ${r.status}`)
+  if (!r.ok) throw new ApiError(`vulns: ${r.status}`, r.status)
   return (await r.json()) as Vulnerability[]
 }
 
@@ -53,25 +61,25 @@ export async function scanDeviceVulnerabilities(deviceId: string): Promise<Vulne
     method: 'POST',
     headers: authHeaders(),
   })
-  if (!r.ok) throw new Error(`scan-vulns: ${r.status}`)
+  if (!r.ok) throw new ApiError(`scan-vulns: ${r.status}`, r.status)
   return (await r.json()) as Vulnerability[]
 }
 
 export async function fetchDevicePorts(deviceId: string) {
   const r = await fetch(`/api/devices/${encodeURIComponent(deviceId)}/ports`, { headers: authHeaders() })
-  if (!r.ok) throw new Error(`ports: ${r.status}`)
+  if (!r.ok) throw new ApiError(`ports: ${r.status}`, r.status)
   return (await r.json()) as { port: number; proto: string; service?: string | null; scanned_at: string }[]
 }
 
 export async function scanDevicePorts(deviceId: string) {
   const r = await fetch(`/api/devices/${encodeURIComponent(deviceId)}/scan-ports`, { method: 'POST', headers: authHeaders() })
-  if (!r.ok) throw new Error(`scan-ports: ${r.status}`)
+  if (!r.ok) throw new ApiError(`scan-ports: ${r.status}`, r.status)
   return (await r.json()) as { port: number; proto: string; service?: string | null; scanned_at: string }[]
 }
 
 export async function isolateDevice(deviceId: string) {
   const r = await fetch(`/api/devices/${encodeURIComponent(deviceId)}/isolate`, { method: 'POST', headers: authHeaders() })
-  if (!r.ok) throw new Error(`isolate: ${r.status}`)
+  if (!r.ok) throw new ApiError(`isolate: ${r.status}`, r.status)
   return (await r.json()) as { ok: string; device_id: string; action: string; ip: string; mac: string }
 }
 
